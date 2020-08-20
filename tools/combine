@@ -1,0 +1,119 @@
+#!/bin/bash
+
+## This script is intended to be called as a combine action from SEGGER
+## Embedded Studio merge project.  Any variable not defined in this file are
+## created by the SES environment prior to running this script.
+
+## Arguments
+##  First arg:  $(SolutionDir)
+##  Second arg: $(Configuration)
+##  Third arg:  $(SolutionName)
+##  Fourth arg: $(HardwareRevision)
+
+set -x
+
+# Read version information
+source "$1/tools/version_defines"
+
+cd "$1/${ARTIFACT_DIR}/$2"
+
+# Create the output hex file
+REVISION="${CI_COMMIT_SHORT_SHA:-$(git describe --no-match --always --abbrev=6 --dirty --tags --long)}"
+BUILD_DATE="$(date "+%Y-%m-%d_%H-%M-%S")"
+OUTPUT_HEX="../$3-r$4-$2-${REVISION}-${BUILD_DATE}.hex"
+
+# Create a list of all the local hex files to merge
+HEX_FILES=$(ls *.hex)
+
+# Copy the software to the output to start the merge process
+cp "${NORDIC_SOFT_DEVICE}" "${OUTPUT_HEX}"
+if [ $? -ne 0 ]; then
+    echo "Error copying '${NORDIC_SOFT_DEVICE}' to '${OUTPUT_HEX}': $?"
+    exit 1
+fi
+
+# Merge all of the hex files by adding a file one at a time to the desired output file
+for i in ${HEX_FILES}; do
+    mergehex --merge "${i}" "${OUTPUT_HEX}" --output "${OUTPUT_HEX}"
+    if [ $? -ne 0 ]; then
+        echo "Error merging '${i}' to '${OUTPUT_HEX}': $?"
+        exit 1
+    fi
+done
+
+# Copy bootloader, softdevice, app and settings to a simple name for debugging
+BL_SD_APP_SET_HEX="../$3-r$4-$2_bl_sd_app_set.hex"
+cp "${OUTPUT_HEX}" "${BL_SD_APP_SET_HEX}"
+if [ $? -ne 0 ]; then
+    echo "Error copying '${OUTPUT_HEX}' to '${BL_SD_APP_SET_HEX}': $?"
+    exit 1
+fi
+
+# Create a merged file with just a bootloader, softdevice and settings
+BL_SD_SET_HEX="../$3-r$4-$2_bl_sd_set.hex"
+mergehex --merge "${NORDIC_SOFT_DEVICE}" bootloader.hex settings.hex --output "${BL_SD_SET_HEX}"
+if [ $? -ne 0 ]; then
+    echo "Error merging '${BL_SD_SET_HEX}': $?"
+    exit 1
+fi
+
+# Create a merged file with just a bootloader and softdevice
+BL_SD_HEX="../$3-r$4-$2_bl_sd.hex"
+mergehex --merge "${NORDIC_SOFT_DEVICE}" bootloader.hex --output "${BL_SD_HEX}"
+if [ $? -ne 0 ]; then
+    echo "Error merging '${BL_SD_HEX}': $?"
+    exit 1
+fi
+
+# Read the app image name and arguments and split on the : delimiter
+APP_ARG_FILE="$1/${ARTIFACT_DIR}/$2-app.arg"
+read line < ${APP_ARG_FILE}
+APP_IMAGE_VER=${line%%:*}
+APP_ARGS=${line##*:}
+rm ${APP_ARG_FILE}
+
+# Read the bootloader image name and arguments and split on the : delimiter
+BL_ARG_FILE="$1/${ARTIFACT_DIR}/$2-bl.arg"
+read line < ${BL_ARG_FILE}
+BL_IMAGE_VER=${line%%:*}
+BL_ARGS=${line##*:}
+rm ${BL_ARG_FILE}
+
+for sd in $1/softdevice/*; do
+    #
+    # Create a test DFU SD update files from all of the soft devices images.
+    #
+    # The test file s132_nrf52_6.1.2_softdevice.hex is a modified version of
+    # s132_nrf52_6.1.1_softdevice.hex that has a SoftDevice FW ID of 0xBADF.  The
+    # sd_version.c module will identify it as version 's132 v6.1.2'.
+    #
+    # This update file will allow a firmware image running SoftDevice v6.1.1 to be
+    # update to v6.1.2.
+    #
+
+    # Extract the SD version number from the file name
+    name=$(basename ${sd} _softdevice.hex)
+    VERSION=${name##s132_nrf52_}
+
+    # Build the SD image name that we'll use in the output file name
+    SD_IMAGE_VER="sd_${VERSION}"
+    SD_ARGS="--sd-req ${SD_VERSION} \
+        --softdevice ${sd} \
+        --sd-id $(SoftDevice_FW_ID_Map ${VERSION}) \
+    "
+
+    DFU_FULL_OUTPUT_FILE="$1/${ARTIFACT_DIR}/$3-r$4-${BL_IMAGE_VER}-${SD_IMAGE_VER}-${APP_IMAGE_VER}-$2-${REVISION}-${BUILD_DATE}.zip"
+
+    nrfutil pkg generate \
+        ${BL_ARGS} \
+        ${SD_ARGS} \
+        ${APP_ARGS} \
+        "${DFU_FULL_OUTPUT_FILE}"
+
+    if [ $? -ne 0 ]; then
+        echo "Error creating DFU full upgrade file '${DFU_FULL_OUTPUT_FILE}': $?"
+        exit 1
+    fi
+done
+
+

@@ -1,0 +1,57 @@
+# This file is meant to be sourced by bash to define the versions used by the
+# Nordic tools for the application, bootloader and hardware.
+
+# An integer used to validate if the application is newer than an installed
+# version.  In order to perform a DFU update, this version must be greater or
+# equal to the installed version.
+APP_VERSION=1
+
+# An integer used to validate if the bootloader is newer than the installed
+# version.  In order to perform a DFU update, this version must be greater than
+# the installed version.
+BOOTLOADER_VERSION=1
+
+# An integer used to validate if the update can be installed.  In order to
+# perform a DFU update, this version must be equal to the installed version.
+#
+# IF this value is changed, the define NRF_DFU_HW_VERSION must also be changed.
+HW_VERSION=1
+
+# A hex string that indicates the version of the SoftDevice that must be
+# installed.
+SD_VERSION="0xB7"
+
+# An integer that indicates the version of the SDK used to produce the
+# Bootloader setting.
+BL_VERSION=2
+
+# A function used to map an SoftDevice image to its FW ID.
+#
+# Usage:
+#
+#   fw_id=$(SoftDevice_FW_ID_Map 6.1.1)
+#
+# Pass in the human-readable version and a string of the FW ID in hex notation
+# will be returned.
+#
+# There should be one entry in the function for each SoftDevice in the
+# softdevice directory.
+
+function SoftDevice_FW_ID_Map()
+{
+    local version=$1
+
+    case ${version} in
+        6.1.1)
+            echo "0xB7"
+            ;;
+
+        6.1.2)
+            echo "0xBADF"
+            ;;
+
+        *)
+            echo ""
+            ;;
+    esac
+}
