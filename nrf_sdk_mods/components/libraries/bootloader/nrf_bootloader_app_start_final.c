@@ -248,9 +248,11 @@ void nrf_bootloader_app_start_final(uint32_t vector_table_addr)
         NRF_LOG_ERROR("Could not protect bootloader and settings pages, 0x%x.", ret_val);
     }
 
-    ret_val = nrf_bootloader_flash_protect(0,
-                                           nrf_dfu_bank0_start_addr() + s_dfu_settings.bank_0.image_size,
-                                           false);
+    ret_val = nrf_bootloader_flash_protect(
+        0,
+        nrf_dfu_bank0_start_addr() + ALIGN_TO_PAGE(s_dfu_settings.bank_0.image_size),
+        false
+    );
 
     if (!NRF_BOOTLOADER_READ_PROTECT && (ret_val != NRF_SUCCESS))
     {

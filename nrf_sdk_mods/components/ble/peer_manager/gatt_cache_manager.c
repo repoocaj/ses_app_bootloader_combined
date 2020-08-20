@@ -294,7 +294,7 @@ static bool local_db_update_in_evt(uint16_t conn_handle)
  * @param[in]  conn_handle  The connection to check.
  * @param[out] p_cccd       The CCCD value of the service changed characteristic for this link.
  *
- * @return Any error from @ref sd_ble_gatts_value_get.
+ * @return Any error from @ref sd_ble_gatts_value_get or @ref sd_ble_gatts_attr_get.
  */
 static ret_code_t service_changed_cccd(uint16_t conn_handle, uint16_t * p_cccd)
 {
@@ -302,24 +302,26 @@ static ret_code_t service_changed_cccd(uint16_t conn_handle, uint16_t * p_cccd)
     uint16_t   end_handle;
     ret_code_t err_code = sd_ble_gatts_initial_user_handle_get(&end_handle);
     ASSERT(err_code == NRF_SUCCESS);
+    NRF_LOG_DEBUG("end_handle = %x", end_handle);
 
     for (uint16_t handle = 1; handle < end_handle; handle++)
     {
-        uint16_t uuid;
-        ble_gatts_value_t value = {.p_value = (uint8_t *)&uuid, .len = 2, .offset = 0};
-        err_code = sd_ble_gatts_value_get(conn_handle, handle, &value);
+        ble_uuid_t uuid;
+        ble_gatts_value_t value = {.p_value = (uint8_t *)&uuid.uuid, .len = 2, .offset = 0};
+
+        err_code = sd_ble_gatts_attr_get(handle, &uuid, NULL);
         if (err_code != NRF_SUCCESS)
         {
             return err_code;
         }
-        else if (!sc_found && (uuid == BLE_UUID_GATT_CHARACTERISTIC_SERVICE_CHANGED))
+        else if (!sc_found && (uuid.uuid == BLE_UUID_GATT_CHARACTERISTIC_SERVICE_CHANGED))
         {
             sc_found = true;
         }
-        else if (sc_found && (uuid == BLE_UUID_DESCRIPTOR_CLIENT_CHAR_CONFIG))
+        else if (sc_found && (uuid.uuid == BLE_UUID_DESCRIPTOR_CLIENT_CHAR_CONFIG))
         {
             value.p_value = (uint8_t *)p_cccd;
-            return sd_ble_gatts_value_get(conn_handle, ++handle, &value);
+            return sd_ble_gatts_value_get(conn_handle, handle, &value);
         }
     }
     return NRF_ERROR_NOT_FOUND;
@@ -363,6 +365,7 @@ static void service_changed_send_in_evt(uint16_t conn_handle)
         {
             uint16_t cccd;
             err_code = service_changed_cccd(conn_handle, &cccd);
+            NRF_LOG_DEBUG("conn_handle = %x, cccd = %x", conn_handle, cccd);
             if ((err_code == NRF_SUCCESS) && cccd)
             {
                 // Possible ATT_MTU exchange ongoing.
