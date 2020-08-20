@@ -1598,7 +1598,12 @@ int SEGGER_RTT_SetFlagsDownBuffer(unsigned BufferIndex, unsigned Flags) {
 *
 */
 void SEGGER_RTT_Init (void) {
-  _DoInit();
+  // Only initialize if the RTT hasn't already been setup
+  char id[] = "SEGGER";
+  if (0 != memcmp(&_SEGGER_RTT.acID[0], id, strlen(id)))
+  {
+    _DoInit();
+  }
 }
 
 /*********************************************************************
